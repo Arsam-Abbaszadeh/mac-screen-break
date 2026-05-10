@@ -46,10 +46,16 @@ struct ContentView: View {
                         .textFieldStyle(.roundedBorder)
                         .lineLimit(2...4)
                         .disabled(sessionController.state == .lockdown)
+                        .onChange(of: sessionController.overlayMessage) { _ in
+                            sessionController.persistEditableSettings()
+                        }
                 }
 
                 Toggle("Mute all sound during lockdown", isOn: $sessionController.muteAudio)
                     .disabled(sessionController.state == .lockdown)
+                    .onChange(of: sessionController.muteAudio) { _ in
+                        sessionController.persistEditableSettings()
+                    }
             }
 
             Text(sessionController.remainingCountdownText())
@@ -68,6 +74,11 @@ struct ContentView: View {
                     sessionController.startSession()
                 }
                 .keyboardShortcut(.defaultAction)
+                .disabled(sessionController.state == .lockdown)
+
+                Button("Instant Start") {
+                    sessionController.startSessionImmediately()
+                }
                 .disabled(sessionController.state == .lockdown)
 
                 Button("Cancel") {

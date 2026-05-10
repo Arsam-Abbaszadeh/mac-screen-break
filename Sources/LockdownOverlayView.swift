@@ -2,7 +2,6 @@ import SwiftUI
 
 struct LockdownOverlayView: View {
     @EnvironmentObject private var sessionController: SessionController
-    @State private var showingEmergencySheet = false
 
     let endDate: Date
     let message: String
@@ -29,15 +28,9 @@ struct LockdownOverlayView: View {
                     .foregroundStyle(.white.opacity(0.58))
 
                 EmergencyHoldButton {
-                    showingEmergencySheet = true
+                    sessionController.completeEmergencyExit()
                 }
                 .padding(.top, 10)
-            }
-        }
-        .sheet(isPresented: $showingEmergencySheet) {
-            EmergencyExitView(challenge: sessionController.emergencyChallenge()) {
-                showingEmergencySheet = false
-                sessionController.completeEmergencyExit()
             }
         }
     }

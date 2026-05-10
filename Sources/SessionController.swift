@@ -1,5 +1,4 @@
 import AppKit
-import Combine
 import SwiftUI
 
 enum SessionState: String, Codable {
@@ -50,21 +49,10 @@ final class SessionController: NSObject, ObservableObject {
     private let settingsKey = "PersistedSettings"
     private var clockTimer: Timer?
     private var displayObserver: NSObjectProtocol?
-    private var cancellables: Set<AnyCancellable> = []
-
-    private let emergencyPrompts = [
-        "type:: [[47aB]] // unlock_now != later?",
-        "confirm-> {Q9p!v2} && exit_mode == true",
-        "manual_override: zx7!LM#42 / keep-going",
-        "break-glass => (alpha9*beta2) + ok_now",
-        "final-check :: mN4@pQ8 + /safe-exit/",
-        "unlock string => vv3#RT9 // no-paste"
-    ]
 
     override init() {
         super.init()
         loadPersistedSettings()
-        observePersistedSettings()
         startClock()
         observeDisplays()
     }
@@ -97,6 +85,38 @@ final class SessionController: NSObject, ObservableObject {
         state = .armed
         quitAttemptMessage = nil
         overlayManager.dismissAll()
+        persistSettings()
+    }
+
+    func startSessionImmediately() {
+        normalizeDurationInputs()
+
+        let lockdownSeconds = max(1, parsedDuration(hours: lockdownHoursText, minutes: lockdownMinutesText, seconds: lockdownSecondsText))
+        let createdAt = Date()
+
+        activeSession = LockdownSession(
+            id: UUID(),
+            createdAt: createdAt,
+            lockdownStartsAt: createdAt,
+            lockdownEndsAt: createdAt.addingTimeInterval(TimeInterval(lockdownSeconds)),
+            muteAudio: muteAudio,
+            overlayMessage: normalizedOverlayMessage,
+            state: .lockdown
+        )
+        state = .lockdown
+        quitAttemptMessage = nil
+        overlayManager.dismissAll()
+
+        if muteAudio {
+            audioController.muteSystemAudio()
+        }
+
+        overlayManager.presentLockdown(
+            sessionController: self,
+            endDate: activeSession?.lockdownEndsAt ?? createdAt
+        )
+        NSApp.activate(ignoringOtherApps: true)
+        persistSettings()
     }
 
     func cancelSession() {
@@ -128,16 +148,16 @@ final class SessionController: NSObject, ObservableObject {
         }
     }
 
-    func emergencyChallenge() -> EmergencyExitChallenge {
-        EmergencyExitChallenge(prompts: Array(emergencyPrompts.shuffled().prefix(2)))
-    }
-
     func completeEmergencyExit() {
         finishSession(resetMessage: false)
     }
 
     func normalizeTypedDurations() {
         normalizeDurationInputs()
+        persistSettings()
+    }
+
+    func persistEditableSettings() {
         persistSettings()
     }
 
@@ -272,20 +292,6 @@ final class SessionController: NSObject, ObservableObject {
         overlayMessage = persisted.overlayMessage
         muteAudio = persisted.muteAudio
         normalizeDurationInputs()
-    }
-
-    private func observePersistedSettings() {
-        Publishers.CombineLatest4($startAfterHoursText, $startAfterMinutesText, $startAfterSecondsText, $lockdownHoursText)
-            .sink { [weak self] _, _, _, _ in
-                self?.persistSettings()
-            }
-            .store(in: &cancellables)
-
-        Publishers.CombineLatest4($lockdownMinutesText, $lockdownSecondsText, $overlayMessage, $muteAudio)
-            .sink { [weak self] _, _, _, _ in
-                self?.persistSettings()
-            }
-            .store(in: &cancellables)
     }
 
     private func persistSettings() {

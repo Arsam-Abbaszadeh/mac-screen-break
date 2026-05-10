@@ -5,15 +5,17 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleDisplayName</key>
-    <string>Mac Screen Break</string>
+    <string>Screen Break</string>
     <key>CFBundleExecutable</key>
     <string>MacScreenBreak</string>
     <key>CFBundleIdentifier</key>
     <string>com.local.macscreenbreak</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleName</key>
-    <string>MacScreenBreak</string>
+    <string>Screen Break</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
