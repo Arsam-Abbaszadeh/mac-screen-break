@@ -1,0 +1,32 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+*.xcodeproj/
+xcuserdata/
+DerivedData/
+*.playground
+
+# Xcode
+.DS_Store
+*.swiftpm
+Build/
+
+# IDE
+.vscode/
+.idea/
+*.swiftpm
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Dependencies
+Packages/
+
+# Local environment
+.env
+.env.local
