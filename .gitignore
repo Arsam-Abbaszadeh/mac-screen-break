@@ -7,14 +7,7 @@ DerivedData/
 *.playground
 
 # Xcode
-.DS_Store
-*.swiftpm
 Build/
-
-# IDE
-.vscode/
-.idea/
-*.swiftpm
 
 # macOS
 .DS_Store
@@ -24,9 +17,17 @@ Build/
 .Spotlight-V100
 .Trashes
 
+# IDE
+.vscode/
+.idea/
+
+# Build output
+dist/
+
 # Dependencies
 Packages/
 
 # Local environment
 .env
 .env.local
+LOCKDOWN_PLAN.md

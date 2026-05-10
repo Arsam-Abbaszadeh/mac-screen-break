@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct EmergencyExitChallenge {
-    let sentences: [String]
+    let prompts: [String]
 }
 
 struct EmergencyExitView: View {
@@ -10,9 +10,9 @@ struct EmergencyExitView: View {
     let onSuccess: () -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var currentSentenceIndex = 0
+    @State private var currentPromptIndex = 0
     @State private var typedText = ""
-    @State private var statusMessage = "Type each sentence exactly. Paste is disabled."
+    @State private var statusMessage = "Type the exact string shown below. Paste is disabled."
     @State private var confirmAvailableAt = Date.distantFuture
     @State private var readyToFinish = false
 
@@ -24,10 +24,15 @@ struct EmergencyExitView: View {
             Text("This flow is intentionally inconvenient. For a true emergency, use macOS force quit.")
                 .foregroundStyle(.secondary)
 
-            Text("Sentence \(currentSentenceIndex + 1) of \(challenge.sentences.count)")
+            Text("String \(currentPromptIndex + 1) of \(challenge.prompts.count)")
                 .font(.headline)
 
+            Text("Type this exact string:")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+
             Text(currentPrompt)
+                .font(.system(.body, design: .monospaced))
                 .textSelection(.disabled)
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -35,6 +40,15 @@ struct EmergencyExitView: View {
 
             PasteBlockingTextField(text: $typedText)
                 .frame(height: 30)
+                .overlay(alignment: .leading) {
+                    if typedText.isEmpty {
+                        Text("Type the string exactly as shown")
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 6)
+                            .allowsHitTesting(false)
+                    }
+                }
                 .onChange(of: typedText) { newValue in
                     handleTypedText(newValue)
                 }
@@ -67,7 +81,7 @@ struct EmergencyExitView: View {
     }
 
     private var currentPrompt: String {
-        challenge.sentences[currentSentenceIndex]
+        challenge.prompts[currentPromptIndex]
     }
 
     private var confirmButtonTitle: String {
@@ -77,23 +91,23 @@ struct EmergencyExitView: View {
 
     private func handleTypedText(_ value: String) {
         if value == currentPrompt {
-            if currentSentenceIndex == challenge.sentences.count - 1 {
+            if currentPromptIndex == challenge.prompts.count - 1 {
                 typedText = ""
                 confirmAvailableAt = Date().addingTimeInterval(10)
                 statusMessage = "Challenge complete. Wait 10 seconds for the final confirmation."
             } else {
-                currentSentenceIndex += 1
+                currentPromptIndex += 1
                 typedText = ""
-                statusMessage = "Correct. Continue with the next sentence."
+                statusMessage = "Correct. Continue with the next string."
             }
             return
         }
 
         if !currentPrompt.hasPrefix(value) {
             typedText = ""
-            statusMessage = "Mismatch. Start that sentence again from the beginning."
+            statusMessage = "Mismatch. Start that string again from the beginning."
         } else {
-            statusMessage = "Keep going. Paste is disabled."
+            statusMessage = "Keep going. Match every character exactly."
         }
     }
 }

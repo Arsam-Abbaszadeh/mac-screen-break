@@ -13,7 +13,7 @@ struct MacScreenBreakApp: App {
                 .onAppear {
                     appDelegate.sessionController = sessionController
                 }
-                .frame(minWidth: 360, idealWidth: 400, minHeight: 300, idealHeight: 320)
+                .frame(minWidth: 480, idealWidth: 520, minHeight: 340, idealHeight: 360)
         }
         .windowResizability(.contentSize)
         .commands {

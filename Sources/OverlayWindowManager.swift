@@ -73,7 +73,10 @@ final class OverlayWindowManager {
     private func configure(window: NSWindow, for screen: NSScreen, endDate: Date, sessionController: SessionController) {
         window.setFrame(screen.frame, display: true)
         window.contentView = NSHostingView(
-            rootView: LockdownOverlayView(endDate: endDate)
+            rootView: LockdownOverlayView(
+                endDate: endDate,
+                message: sessionController.activeSession?.overlayMessage ?? sessionController.overlayMessage
+            )
                 .environmentObject(sessionController)
         )
         window.orderFrontRegardless()

@@ -2,19 +2,22 @@ import SwiftUI
 
 struct LockdownOverlayView: View {
     @EnvironmentObject private var sessionController: SessionController
-    let endDate: Date
-
     @State private var showingEmergencySheet = false
 
+    let endDate: Date
+    let message: String
+
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
+        ZStack {
             Color.black
                 .ignoresSafeArea()
 
-            VStack(spacing: 20) {
-                Text("Look away from the screen")
+            VStack(spacing: 26) {
+                Text(message)
                     .font(.system(size: 30, weight: .medium, design: .rounded))
                     .foregroundStyle(.white.opacity(0.9))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
 
                 Text(timeRemaining)
                     .font(.system(size: 88, weight: .bold, design: .rounded))
@@ -24,12 +27,12 @@ struct LockdownOverlayView: View {
                 Text("Lockdown ends at \(endDate.formatted(date: .omitted, time: .shortened))")
                     .font(.system(size: 18, weight: .regular, design: .rounded))
                     .foregroundStyle(.white.opacity(0.58))
-            }
 
-            EmergencyHoldButton {
-                showingEmergencySheet = true
+                EmergencyHoldButton {
+                    showingEmergencySheet = true
+                }
+                .padding(.top, 10)
             }
-            .padding(28)
         }
         .sheet(isPresented: $showingEmergencySheet) {
             EmergencyExitView(challenge: sessionController.emergencyChallenge()) {

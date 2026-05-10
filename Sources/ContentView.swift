@@ -5,8 +5,10 @@ struct ContentView: View {
     @FocusState private var focusedField: DurationField?
 
     private enum DurationField: Hashable {
+        case startHours
         case startMinutes
         case startSeconds
+        case lockdownHours
         case lockdownMinutes
         case lockdownSeconds
     }
@@ -19,20 +21,32 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 14) {
                 durationRow(
                     title: "Start lockdown after",
+                    hours: $sessionController.startAfterHoursText,
                     minutes: $sessionController.startAfterMinutesText,
                     seconds: $sessionController.startAfterSecondsText,
                     disabled: sessionController.state == .lockdown,
+                    hourField: .startHours,
                     minuteField: .startMinutes,
                     secondField: .startSeconds
                 )
                 durationRow(
                     title: "Lockdown length",
+                    hours: $sessionController.lockdownHoursText,
                     minutes: $sessionController.lockdownMinutesText,
                     seconds: $sessionController.lockdownSecondsText,
                     disabled: sessionController.state == .lockdown,
+                    hourField: .lockdownHours,
                     minuteField: .lockdownMinutes,
                     secondField: .lockdownSeconds
                 )
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Overlay message")
+                    TextField("Look away from the screen", text: $sessionController.overlayMessage, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                        .lineLimit(2...4)
+                        .disabled(sessionController.state == .lockdown)
+                }
 
                 Toggle("Mute all sound during lockdown", isOn: $sessionController.muteAudio)
                     .disabled(sessionController.state == .lockdown)
@@ -72,9 +86,11 @@ struct ContentView: View {
 
     private func durationRow(
         title: String,
+        hours: Binding<String>,
         minutes: Binding<String>,
         seconds: Binding<String>,
         disabled: Bool,
+        hourField: DurationField,
         minuteField: DurationField,
         secondField: DurationField
     ) -> some View {
@@ -83,6 +99,9 @@ struct ContentView: View {
             Spacer()
 
             HStack(spacing: 8) {
+                durationField(text: hours, width: 44, placeholder: "0", field: hourField)
+                Text("h")
+                    .foregroundStyle(.secondary)
                 durationField(text: minutes, width: 52, placeholder: "00", field: minuteField)
                 Text("m")
                     .foregroundStyle(.secondary)

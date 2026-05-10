@@ -14,15 +14,30 @@ struct LockdownSession: Codable {
     let lockdownStartsAt: Date
     let lockdownEndsAt: Date
     let muteAudio: Bool
+    let overlayMessage: String
     var state: SessionState
+}
+
+private struct PersistedSettings: Codable {
+    var startAfterHoursText: String
+    var startAfterMinutesText: String
+    var startAfterSecondsText: String
+    var lockdownHoursText: String
+    var lockdownMinutesText: String
+    var lockdownSecondsText: String
+    var overlayMessage: String
+    var muteAudio: Bool
 }
 
 @MainActor
 final class SessionController: NSObject, ObservableObject {
+    @Published var startAfterHoursText = "0"
     @Published var startAfterMinutesText = "30"
     @Published var startAfterSecondsText = "00"
+    @Published var lockdownHoursText = "0"
     @Published var lockdownMinutesText = "5"
     @Published var lockdownSecondsText = "00"
+    @Published var overlayMessage = "Look away from the screen"
     @Published var muteAudio = true
     @Published private(set) var state: SessionState = .idle
     @Published private(set) var now = Date()
@@ -31,17 +46,25 @@ final class SessionController: NSObject, ObservableObject {
 
     private let overlayManager = OverlayWindowManager()
     private let audioController = AudioController()
+    private let userDefaults = UserDefaults.standard
+    private let settingsKey = "PersistedSettings"
     private var clockTimer: Timer?
     private var displayObserver: NSObjectProtocol?
+    private var cancellables: Set<AnyCancellable> = []
 
     private let emergencyPrompts = [
-        "I am ending this break early and I accept that the session will stop now.",
-        "A short interruption is better than abandoning the break without thinking first.",
-        "If this is a real emergency, I can continue and close the app after this challenge."
+        "type:: [[47aB]] // unlock_now != later?",
+        "confirm-> {Q9p!v2} && exit_mode == true",
+        "manual_override: zx7!LM#42 / keep-going",
+        "break-glass => (alpha9*beta2) + ok_now",
+        "final-check :: mN4@pQ8 + /safe-exit/",
+        "unlock string => vv3#RT9 // no-paste"
     ]
 
     override init() {
         super.init()
+        loadPersistedSettings()
+        observePersistedSettings()
         startClock()
         observeDisplays()
     }
@@ -56,8 +79,8 @@ final class SessionController: NSObject, ObservableObject {
     func startSession() {
         normalizeDurationInputs()
 
-        let startAfterSeconds = max(1, parsedDuration(minutes: startAfterMinutesText, seconds: startAfterSecondsText))
-        let lockdownSeconds = max(1, parsedDuration(minutes: lockdownMinutesText, seconds: lockdownSecondsText))
+        let startAfterSeconds = max(1, parsedDuration(hours: startAfterHoursText, minutes: startAfterMinutesText, seconds: startAfterSecondsText))
+        let lockdownSeconds = max(1, parsedDuration(hours: lockdownHoursText, minutes: lockdownMinutesText, seconds: lockdownSecondsText))
         let createdAt = Date()
         let startDate = createdAt.addingTimeInterval(TimeInterval(startAfterSeconds))
         let endDate = startDate.addingTimeInterval(TimeInterval(lockdownSeconds))
@@ -68,6 +91,7 @@ final class SessionController: NSObject, ObservableObject {
             lockdownStartsAt: startDate,
             lockdownEndsAt: endDate,
             muteAudio: muteAudio,
+            overlayMessage: normalizedOverlayMessage,
             state: .armed
         )
         state = .armed
@@ -105,7 +129,7 @@ final class SessionController: NSObject, ObservableObject {
     }
 
     func emergencyChallenge() -> EmergencyExitChallenge {
-        EmergencyExitChallenge(sentences: Array(emergencyPrompts.shuffled().prefix(2)))
+        EmergencyExitChallenge(prompts: Array(emergencyPrompts.shuffled().prefix(2)))
     }
 
     func completeEmergencyExit() {
@@ -114,6 +138,7 @@ final class SessionController: NSObject, ObservableObject {
 
     func normalizeTypedDurations() {
         normalizeDurationInputs()
+        persistSettings()
     }
 
     func reassertLockdownWindowsIfNeeded() {
@@ -209,37 +234,119 @@ final class SessionController: NSObject, ObservableObject {
 
     private func formattedDuration(until endDate: Date) -> String {
         let remaining = max(0, Int(endDate.timeIntervalSince(now)))
+        let hours = remaining / 3600
         let minutes = remaining / 60
         let seconds = remaining % 60
+        if hours > 0 {
+            return String(format: "%02d:%02d:%02d", hours, (remaining % 3600) / 60, seconds)
+        }
         return String(format: "%02d:%02d", minutes, seconds)
     }
 
     private func normalizeDurationInputs() {
-        let normalizedStart = normalizedComponents(minutes: startAfterMinutesText, seconds: startAfterSecondsText)
+        let normalizedStart = normalizedComponents(hours: startAfterHoursText, minutes: startAfterMinutesText, seconds: startAfterSecondsText)
+        startAfterHoursText = normalizedStart.hours
         startAfterMinutesText = normalizedStart.minutes
         startAfterSecondsText = normalizedStart.seconds
 
-        let normalizedLockdown = normalizedComponents(minutes: lockdownMinutesText, seconds: lockdownSecondsText)
+        let normalizedLockdown = normalizedComponents(hours: lockdownHoursText, minutes: lockdownMinutesText, seconds: lockdownSecondsText)
+        lockdownHoursText = normalizedLockdown.hours
         lockdownMinutesText = normalizedLockdown.minutes
         lockdownSecondsText = normalizedLockdown.seconds
     }
 
-    private func parsedDuration(minutes: String, seconds: String) -> Int {
-        let minuteValue = Int(minutes) ?? 0
-        let secondValue = Int(seconds) ?? 0
-        return (max(0, minuteValue) * 60) + max(0, secondValue)
+    private func loadPersistedSettings() {
+        guard
+            let data = userDefaults.data(forKey: settingsKey),
+            let persisted = try? JSONDecoder().decode(PersistedSettings.self, from: data)
+        else {
+            return
+        }
+
+        startAfterHoursText = persisted.startAfterHoursText
+        startAfterMinutesText = persisted.startAfterMinutesText
+        startAfterSecondsText = persisted.startAfterSecondsText
+        lockdownHoursText = persisted.lockdownHoursText
+        lockdownMinutesText = persisted.lockdownMinutesText
+        lockdownSecondsText = persisted.lockdownSecondsText
+        overlayMessage = persisted.overlayMessage
+        muteAudio = persisted.muteAudio
+        normalizeDurationInputs()
     }
 
-    private func normalizedComponents(minutes: String, seconds: String) -> (minutes: String, seconds: String) {
-        let totalSeconds = max(1, parsedDuration(minutes: sanitizedMinuteString(minutes), seconds: sanitizedSecondString(seconds)))
-        let normalizedMinutes = totalSeconds / 60
+    private func observePersistedSettings() {
+        Publishers.CombineLatest4($startAfterHoursText, $startAfterMinutesText, $startAfterSecondsText, $lockdownHoursText)
+            .sink { [weak self] _, _, _, _ in
+                self?.persistSettings()
+            }
+            .store(in: &cancellables)
+
+        Publishers.CombineLatest4($lockdownMinutesText, $lockdownSecondsText, $overlayMessage, $muteAudio)
+            .sink { [weak self] _, _, _, _ in
+                self?.persistSettings()
+            }
+            .store(in: &cancellables)
+    }
+
+    private func persistSettings() {
+        let persisted = PersistedSettings(
+            startAfterHoursText: startAfterHoursText,
+            startAfterMinutesText: startAfterMinutesText,
+            startAfterSecondsText: startAfterSecondsText,
+            lockdownHoursText: lockdownHoursText,
+            lockdownMinutesText: lockdownMinutesText,
+            lockdownSecondsText: lockdownSecondsText,
+            overlayMessage: overlayMessage,
+            muteAudio: muteAudio
+        )
+
+        guard let data = try? JSONEncoder().encode(persisted) else {
+            return
+        }
+
+        userDefaults.set(data, forKey: settingsKey)
+    }
+
+    private var normalizedOverlayMessage: String {
+        let trimmed = overlayMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Look away from the screen" : trimmed
+    }
+
+    private func parsedDuration(hours: String, minutes: String, seconds: String) -> Int {
+        let hourValue = Int(hours) ?? 0
+        let minuteValue = Int(minutes) ?? 0
+        let secondValue = Int(seconds) ?? 0
+        return (max(0, hourValue) * 3600) + (max(0, minuteValue) * 60) + max(0, secondValue)
+    }
+
+    private func normalizedComponents(hours: String, minutes: String, seconds: String) -> (hours: String, minutes: String, seconds: String) {
+        let totalSeconds = max(1, parsedDuration(
+            hours: sanitizedHourString(hours),
+            minutes: sanitizedMinuteString(minutes),
+            seconds: sanitizedSecondString(seconds)
+        ))
+        let normalizedHours = totalSeconds / 3600
+        let normalizedMinutes = (totalSeconds % 3600) / 60
         let normalizedSeconds = totalSeconds % 60
-        return (String(normalizedMinutes), String(format: "%02d", normalizedSeconds))
+        return (
+            String(normalizedHours),
+            String(format: "%02d", normalizedMinutes),
+            String(format: "%02d", normalizedSeconds)
+        )
+    }
+
+    private func sanitizedHourString(_ value: String) -> String {
+        let digits = value.filter(\.isNumber)
+        return digits.isEmpty ? "0" : String(digits.prefix(3))
     }
 
     private func sanitizedMinuteString(_ value: String) -> String {
         let digits = value.filter(\.isNumber)
-        return digits.isEmpty ? "0" : String(digits.prefix(3))
+        guard !digits.isEmpty else {
+            return "0"
+        }
+        let trimmed = String(digits.prefix(2))
+        return String(min(Int(trimmed) ?? 0, 59))
     }
 
     private func sanitizedSecondString(_ value: String) -> String {
