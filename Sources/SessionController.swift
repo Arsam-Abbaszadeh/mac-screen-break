@@ -13,6 +13,7 @@ struct LockdownSession: Codable {
     let lockdownStartsAt: Date
     let lockdownEndsAt: Date
     let muteAudio: Bool
+    let pauseMedia: Bool
     let overlayMessage: String
     var state: SessionState
 }
@@ -26,6 +27,8 @@ private struct PersistedSettings: Codable {
     var lockdownSecondsText: String
     var overlayMessage: String
     var muteAudio: Bool
+    // Optional so settings persisted before this field existed still decode.
+    var pauseMedia: Bool?
 }
 
 @MainActor
@@ -38,6 +41,7 @@ final class SessionController: NSObject, ObservableObject {
     @Published var lockdownSecondsText = "00"
     @Published var overlayMessage = "Look away from the screen"
     @Published var muteAudio = true
+    @Published var pauseMedia = true
     @Published private(set) var state: SessionState = .idle
     @Published private(set) var now = Date()
     @Published private(set) var activeSession: LockdownSession?
@@ -45,6 +49,8 @@ final class SessionController: NSObject, ObservableObject {
 
     private let overlayManager = OverlayWindowManager()
     private let audioController = AudioController()
+    private let mediaController = MediaController()
+    private let fullScreenController = FullScreenController()
     private let userDefaults = UserDefaults.standard
     private let settingsKey = "PersistedSettings"
     private var clockTimer: Timer?
@@ -79,17 +85,21 @@ final class SessionController: NSObject, ObservableObject {
             lockdownStartsAt: startDate,
             lockdownEndsAt: endDate,
             muteAudio: muteAudio,
+            pauseMedia: pauseMedia,
             overlayMessage: normalizedOverlayMessage,
             state: .armed
         )
         state = .armed
         quitAttemptMessage = nil
         overlayManager.dismissAll()
+        fullScreenController.ensureAccessibilityPermission(prompt: true)
         persistSettings()
     }
 
     func startSessionImmediately() {
         normalizeDurationInputs()
+
+        fullScreenController.ensureAccessibilityPermission(prompt: true)
 
         let lockdownSeconds = max(1, parsedDuration(hours: lockdownHoursText, minutes: lockdownMinutesText, seconds: lockdownSecondsText))
         let createdAt = Date()
@@ -100,6 +110,7 @@ final class SessionController: NSObject, ObservableObject {
             lockdownStartsAt: createdAt,
             lockdownEndsAt: createdAt.addingTimeInterval(TimeInterval(lockdownSeconds)),
             muteAudio: muteAudio,
+            pauseMedia: pauseMedia,
             overlayMessage: normalizedOverlayMessage,
             state: .lockdown
         )
@@ -107,15 +118,9 @@ final class SessionController: NSObject, ObservableObject {
         quitAttemptMessage = nil
         overlayManager.dismissAll()
 
-        if muteAudio {
-            audioController.muteSystemAudio()
+        if let session = activeSession {
+            applyLockdownEffects(for: session)
         }
-
-        overlayManager.presentLockdown(
-            sessionController: self,
-            endDate: activeSession?.lockdownEndsAt ?? createdAt
-        )
-        NSApp.activate(ignoringOtherApps: true)
         persistSettings()
     }
 
@@ -203,22 +208,43 @@ final class SessionController: NSObject, ObservableObject {
                 session.state = .lockdown
                 activeSession = session
                 state = .lockdown
-
-                if session.muteAudio {
-                    audioController.muteSystemAudio()
-                }
-
-                overlayManager.presentLockdown(
-                    sessionController: self,
-                    endDate: session.lockdownEndsAt
-                )
-                NSApp.activate(ignoringOtherApps: true)
+                applyLockdownEffects(for: session)
             }
         case .lockdown:
             overlayManager.update(endDate: session.lockdownEndsAt)
             if now >= session.lockdownEndsAt {
                 finishSession(resetMessage: true)
             }
+        }
+    }
+
+    private func applyLockdownEffects(for session: LockdownSession) {
+        if session.muteAudio {
+            audioController.muteSystemAudio()
+        }
+
+        if session.pauseMedia {
+            mediaController.pauseIfPlaying()
+        }
+
+        let presentOverlay = { [weak self] in
+            guard let self else { return }
+            self.overlayManager.presentLockdown(
+                sessionController: self,
+                endDate: session.lockdownEndsAt
+            )
+            NSApp.activate(ignoringOtherApps: true)
+        }
+
+        // Take apps out of full-screen modes so the overlay can cover all
+        // displays. If anything was adjusted, wait briefly for the animation
+        // and Space switch to settle before presenting the shield overlay.
+        if fullScreenController.prepareForOverlay() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                presentOverlay()
+            }
+        } else {
+            presentOverlay()
         }
     }
 
@@ -291,6 +317,7 @@ final class SessionController: NSObject, ObservableObject {
         lockdownSecondsText = persisted.lockdownSecondsText
         overlayMessage = persisted.overlayMessage
         muteAudio = persisted.muteAudio
+        pauseMedia = persisted.pauseMedia ?? true
         normalizeDurationInputs()
     }
 
@@ -303,7 +330,8 @@ final class SessionController: NSObject, ObservableObject {
             lockdownMinutesText: lockdownMinutesText,
             lockdownSecondsText: lockdownSecondsText,
             overlayMessage: overlayMessage,
-            muteAudio: muteAudio
+            muteAudio: muteAudio,
+            pauseMedia: pauseMedia
         )
 
         guard let data = try? JSONEncoder().encode(persisted) else {

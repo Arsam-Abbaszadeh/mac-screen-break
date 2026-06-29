@@ -54,7 +54,7 @@ final class OverlayWindowManager {
     }
 
     private func makeWindow(for screen: NSScreen) -> NSWindow {
-        let window = NSWindow(
+        let window = LockdownPanel(
             contentRect: screen.frame,
             styleMask: [.borderless],
             backing: .buffered,
@@ -63,10 +63,20 @@ final class OverlayWindowManager {
         )
         window.isOpaque = true
         window.backgroundColor = .black
-        window.level = .screenSaver
-        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        // Use the shielding window level so the overlay sits above native
+        // full-screen apps and full-screen video (which sit above .screenSaver).
+        window.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
+        window.collectionBehavior = [
+            .canJoinAllSpaces,
+            .fullScreenAuxiliary,
+            .stationary,
+            .ignoresCycle
+        ]
         window.ignoresMouseEvents = false
         window.hasShadow = false
+        window.isReleasedWhenClosed = false
+        window.isMovable = false
+        window.tabbingMode = .disallowed
         return window
     }
 
@@ -80,5 +90,15 @@ final class OverlayWindowManager {
                 .environmentObject(sessionController)
         )
         window.orderFrontRegardless()
+    }
+}
+
+private final class LockdownPanel: NSPanel {
+    override var canBecomeKey: Bool {
+        true
+    }
+
+    override var canBecomeMain: Bool {
+        true
     }
 }

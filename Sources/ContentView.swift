@@ -56,6 +56,12 @@ struct ContentView: View {
                     .onChange(of: sessionController.muteAudio) { _ in
                         sessionController.persistEditableSettings()
                     }
+
+                Toggle("Pause playing video during lockdown", isOn: $sessionController.pauseMedia)
+                    .disabled(sessionController.state == .lockdown)
+                    .onChange(of: sessionController.pauseMedia) { _ in
+                        sessionController.persistEditableSettings()
+                    }
             }
 
             Text(sessionController.remainingCountdownText())
